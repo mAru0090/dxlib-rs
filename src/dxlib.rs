@@ -2,6 +2,16 @@ use crate::dxlib_constants::*;
 use crate::dxlib_types::*;
 use crate::dxlib_error::*;
 use dxlib_rs_macro::dxlib_gen;
+
+
+const DEFAULT_RECT:RECT = RECT {
+            left: -1,
+            right: -1,
+            top: -1,
+            bottom: -1,
+};
+
+
 // =======================================================
 // dxlib-rs版
 // dxlib_gen! {
@@ -29,7 +39,7 @@ dxlib_gen! {
     fn ScreenFlip() -> CInt,
     // 描画先グラフィック領域の指定
     fn SetDrawScreen(#[default = "DX_SCREEN_BACK"] draw_screen: Option<CInt>) -> CInt,
-    fn ClearDrawScreen(clear_rect: *mut RECT) -> CInt,
+    fn ClearDrawScreen(#[default = "&mut DEFAULT_RECT"] clear_rect: Option<*mut RECT>) -> CInt,
     // ウインドウモード・フルスクリーンモードの変更を行う
     fn ChangeWindowMode(#[default = "1"] flag:Option<CInt>) -> CInt,
     // ウインドウのタイトルを変更する
@@ -54,4 +64,17 @@ dxlib_gen! {
     fn GetColor(red: CInt, green: CInt, blue: CInt) -> CInt,
     // 文字列を描画する
     fn DrawString(x: CInt, y: CInt, string: &str, color: CInt) -> CInt,
+    fn LoadGraph(file_name: &str) -> CInt,
+    fn DrawGraph(x: CInt, y: CInt, gr_handle: CInt, trans_flag: CInt) -> CInt,
+
+    #[error_condition = "result == i32::MAX"]
+    fn CheckHitKey(key_code: CInt) -> CInt,
+    fn FileRead_open(file_path: &str,r#async: CInt) -> CInt,
+    fn FileRead_size(file_path: &str) -> CLongLong,
+    fn FileRead_close(file_handle: CInt) -> CInt,
+    fn FileRead_tell(file_handle: CInt) -> CLongLong,
+    fn FileRead_seek(file_handle: CInt,offset: CLongLong,origin: CInt) -> CInt,
+    fn FileRead_read(buffer: *mut CVoid,read_size: CInt,file_handle: CInt) -> CInt,
+    fn FileRead_gets(buffer: *mut CChar,num: CInt,file_handle: CInt) -> CInt,
+    fn SetUseASyncLoadFlag(flag: CInt) -> CInt,
 }

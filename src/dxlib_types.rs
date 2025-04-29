@@ -148,7 +148,7 @@ impl Clone for MATRIX {
 pub type CFloat = f32;
 pub type CInt = i32;
 pub type CVoid = c_void;
-pub type CLong = i64;
+pub type CLongLong = i64;
 pub type CDouble = f64;
 pub type CChar = c_char;
 

@@ -150,7 +150,7 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
         let return_type = get_return_type(&sig).unwrap();
 
         let error_condition =
-            extract_error_condition(attrs).unwrap_or_else(|| quote! { result == -1i32 });
+            extract_error_condition(attrs).unwrap_or_else(|| quote! { result as i32 == -1i32 });
         for arg in sig.inputs.iter() {
             if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = arg {
                 let ident = match &**pat {
