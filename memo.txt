@@ -1,0 +1,13 @@
+2025/04/29
+	dxlib-rs-macro内での、dxlib-genについて。
+	特定の引数、'&str'、'Option<T>'等を扱っているが、
+	impl<T>トレイト等をそのまま渡せるようにすると良いかもしれない
+	dxlib_gen! {
+		  // 文字列を描画する
+    		  fn DrawString(x: CInt, y: CInt, string: impl ToString, color: CInt) -> CInt,
+	}
+	等にすれば、
+	DrawString(0,0,"あいうえお",GetColor(255,255,255))?;
+	DrawString(0,0,String::from("あいうえお"),GetColor(255,255,255))?;
+	も可能になる。
+

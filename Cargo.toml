@@ -1,0 +1,14 @@
+[package]
+name = "dxlib-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+dxlib-rs-macro = {path = "./dxlib-rs-macro"}
+thiserror = "2.0.12"
+
+[workspace]
+members = [
+    "dxlib-rs-macro"
+]
