@@ -35,7 +35,7 @@ fn main() ->Result<()> {
     Ok(())
 }
 ```
-4. もしdxlib_rs::dxlib内で定義されているdxlib関数が足りない場合は、下記の様に自身で定義
+5. もしdxlib_rs::dxlib内で定義されているdxlib関数が足りない場合は、下記の様に自身で定義
 ```rust
 // =======================================================
 // dxlib-rs版
@@ -91,4 +91,4 @@ dxlib_gen! {
     fn DrawString(x: CInt, y: CInt, string: &str, color: CInt) -> CInt,
 }
 ```
-5. cargo run等して実行
+6. cargo run等して実行
