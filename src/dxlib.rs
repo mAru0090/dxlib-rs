@@ -1,16 +1,14 @@
 use crate::dxlib_constants::*;
-use crate::dxlib_types::*;
 use crate::dxlib_error::*;
+use crate::dxlib_types::*;
 use dxlib_rs_macro::dxlib_gen;
 
-
-const DEFAULT_RECT:RECT = RECT {
-            left: -1,
-            right: -1,
-            top: -1,
-            bottom: -1,
+const DEFAULT_RECT: RECT = RECT {
+    left: -1,
+    right: -1,
+    top: -1,
+    bottom: -1,
 };
-
 
 // =======================================================
 // dxlib-rs版
@@ -52,7 +50,7 @@ dxlib_gen! {
         x: CInt,
         y: CInt,
         char_max_length: CInt,
-        str_buffer: *mut CChar,
+        str_buffer: impl Into<Vec<i8>>,
         cancel_valid_flag: CInt,
     ) -> CInt,
     // 文字列の引数の文字コードを設定する
@@ -63,7 +61,7 @@ dxlib_gen! {
     #[error_condition = "result == i32::MAX"]
     fn GetColor(red: CInt, green: CInt, blue: CInt) -> CInt,
     // 文字列を描画する
-    fn DrawString(x: CInt, y: CInt, string: &str, color: CInt) -> CInt,
+    fn DrawString(x: CInt, y: CInt, string: impl ToString, color: CInt) -> CInt,
     fn LoadGraph(file_name: &str) -> CInt,
     fn DrawGraph(x: CInt, y: CInt, gr_handle: CInt, trans_flag: CInt) -> CInt,
 

@@ -151,4 +151,3 @@ pub type CVoid = c_void;
 pub type CLongLong = i64;
 pub type CDouble = f64;
 pub type CChar = c_char;
-

@@ -8,31 +8,11 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat, PatType,
-    PathArguments, ReturnType, Signature, Token, Type, TypePath, TypeReference,
+    PathArguments, ReturnType, Signature, Token, Type, TypeParamBound, TypePath, TypeReference,
     parse::{Parse, ParseStream},
-    parse_macro_input,
+    parse_macro_input, parse_str,
     punctuated::Punctuated,
 };
-
-/*
-/// マクロ入力全体を受け取る構造体
-struct DxlibGenInput {
-    lib_name: LitStr,
-    fns: Punctuated<Signature, Token![,]>,
-}
-
-impl Parse for DxlibGenInput {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        // 1) 文字列リテラルとしてライブラリ名をパース
-        let lib_name: LitStr = input.parse()?;
-        // 2) カンマをスキップ
-        input.parse::<Token![,]>()?;
-        // 3) 以降を Signature のカンマ区切りリストとしてパース
-        let fns = Punctuated::<Signature, Token![,]>::parse_terminated(input)?;
-        Ok(DxlibGenInput { lib_name, fns })
-    }
-}
-*/
 
 // 属性付き関数
 struct FunctionWithAttrs {
@@ -61,6 +41,126 @@ impl Parse for DxlibGenInput {
         let fns = Punctuated::<FunctionWithAttrs, Token![,]>::parse_terminated(input)?;
         Ok(DxlibGenInput { lib_name, fns })
     }
+}
+
+// 型 `a` と `b` が構造的に同じかを判定（再帰）
+fn type_eq(a: &Type, b: &Type) -> bool {
+    match (a, b) {
+        (Type::Path(a_path), Type::Path(b_path)) => {
+            let a_segments = &a_path.path.segments;
+            let b_segments = &b_path.path.segments;
+
+            if a_segments.len() != b_segments.len() {
+                return false;
+            }
+
+            for (a_seg, b_seg) in a_segments.iter().zip(b_segments.iter()) {
+                if a_seg.ident != b_seg.ident {
+                    return false;
+                }
+
+                match (&a_seg.arguments, &b_seg.arguments) {
+                    (
+                        PathArguments::AngleBracketed(a_args),
+                        PathArguments::AngleBracketed(b_args),
+                    ) => {
+                        let a_generic = &a_args.args;
+                        let b_generic = &b_args.args;
+
+                        if a_generic.len() != b_generic.len() {
+                            return false;
+                        }
+
+                        for (a_arg, b_arg) in a_generic.iter().zip(b_generic.iter()) {
+                            match (a_arg, b_arg) {
+                                (GenericArgument::Type(a_ty), GenericArgument::Type(b_ty)) => {
+                                    if !type_eq(a_ty, b_ty) {
+                                        return false;
+                                    }
+                                }
+                                _ => return false, // lifetimesや他の引数には未対応
+                            }
+                        }
+                    }
+                    (PathArguments::None, PathArguments::None) => {}
+                    _ => return false,
+                }
+            }
+
+            true
+        }
+        _ => false,
+    }
+}
+
+// `impl Trait<SomeType>` において、Trait名と型引数の型構造が一致するかを判定
+fn is_impl_trait_with_target_type_path(ty: &Type, trait_name: &str, expected_ty: &Type) -> bool {
+    match ty {
+        Type::ImplTrait(it) => it.bounds.iter().any(|bound| {
+            if let TypeParamBound::Trait(trait_bound) = bound {
+                let path = &trait_bound.path;
+
+                if let Some(last_segment) = path.segments.last() {
+                    if last_segment.ident == trait_name {
+                        if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                            return args.args.iter().any(|arg| {
+                                if let GenericArgument::Type(inner_ty) = arg {
+                                    return type_eq(inner_ty, expected_ty);
+                                }
+                                false
+                            });
+                        }
+                    }
+                }
+            }
+            false
+        }),
+        _ => false,
+    }
+}
+
+fn is_impl_trait_with_target_type(ty: &Type, trait_name: &str, type_arg_name: &str) -> bool {
+    match ty {
+        Type::ImplTrait(it) => it.bounds.iter().any(|bound| {
+            if let TypeParamBound::Trait(trait_bound) = bound {
+                let path = &trait_bound.path;
+
+                if let Some(last_segment) = path.segments.last() {
+                    if last_segment.ident == trait_name {
+                        if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                            return args.args.iter().any(|arg| {
+                                if let GenericArgument::Type(Type::Path(type_path)) = arg {
+                                    if let Some(ident) = type_path.path.get_ident() {
+                                        return ident == type_arg_name;
+                                    }
+                                }
+                                false
+                            });
+                        }
+                    }
+                }
+            }
+            false
+        }),
+        _ => false,
+    }
+}
+fn is_impl_trait_named(ty: &Type, target: &str) -> bool {
+    match ty {
+        Type::ImplTrait(it) => it
+            .bounds
+            .iter()
+            .any(|bound| matches!(bound, TypeParamBound::Trait(tb) if tb.path.is_ident(target))),
+        _ => false,
+    }
+}
+
+fn is_impl_to_string(ty: &Type) -> bool {
+    is_impl_trait_named(ty, "ToString")
+}
+
+fn is_impl_display(ty: &Type) -> bool {
+    is_impl_trait_named(ty, "Display")
 }
 
 fn get_return_type(sig: &Signature) -> Option<&syn::Type> {
@@ -175,6 +275,71 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                     extern_args.push(quote! { #ident: #inner_ty });
                     call_idents.push(quote! { #ident });
 
+                    continue;
+                }
+
+                if is_impl_to_string(&ty) {
+                    wrapper_args.push(quote! { #ident: impl ToString });
+                    extern_args.push(quote! { #ident: *const i8 });
+                    convert_stmts.push(quote! {
+                        let #ident = {
+                            let s = #ident.to_string();
+                            let c = CString::new(s).expect("CString::new failed");
+                            let ptr = c.as_ptr();
+                            std::mem::forget(c);
+                            ptr
+                        };
+                    });
+                    call_idents.push(quote! { #ident });
+                    continue;
+                }
+
+                if is_impl_display(&ty) {
+                    wrapper_args.push(quote! { #ident: impl Display });
+                    extern_args.push(quote! { #ident: *const i8 });
+                    convert_stmts.push(quote! {
+                        let #ident = {
+                            let s = #ident.to_string();
+                            let c = CString::new(s).expect("CString::new failed");
+                            let ptr = c.as_ptr();
+                            std::mem::forget(c);
+                            ptr
+                        };
+                    });
+                    call_idents.push(quote! { #ident });
+                    continue;
+                }
+                // impl Into<Vec<u8>>の場合は*mut u8に変換
+                if is_impl_trait_with_target_type_path(&ty, "Into", &parse_str("Vec<u8>").unwrap())
+                {
+                    wrapper_args.push(quote! { #ident: impl Into<Vec<u8>> });
+                    extern_args.push(quote! { #ident: *mut u8 });
+                    convert_stmts.push(quote! {
+                        let #ident = {
+                            let v = #ident.into();
+                            let ptr = v.as_mut_ptr();
+                            std::mem::forget(v); // メモリ管理
+                            ptr
+                        };
+                    });
+                    call_idents.push(quote! { #ident });
+                    continue;
+                }
+
+                // impl Into<Vec<i8>>の場合は*mut i8に変換
+                if is_impl_trait_with_target_type_path(&ty, "Into", &parse_str("Vec<i8>").unwrap())
+                {
+                    wrapper_args.push(quote! { #ident: impl Into<Vec<i8>> });
+                    extern_args.push(quote! { #ident: *mut i8 });
+                    convert_stmts.push(quote! {
+                        let #ident = {
+                            let mut v = #ident.into();
+                            let ptr = v.as_mut_ptr();
+                            std::mem::forget(v); // メモリ管理
+                            ptr
+                        };
+                    });
+                    call_idents.push(quote! { #ident });
                     continue;
                 }
 
