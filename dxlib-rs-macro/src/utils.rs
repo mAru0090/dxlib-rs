@@ -255,6 +255,21 @@ pub fn is_vec_type(ty: &Type) -> bool {
     false
 }
 
+pub fn is_mut_vec_type(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        mutability: Some(_),
+        elem,
+        ..
+    }) = ty
+    {
+        if let Type::Path(TypePath { path, .. }) = elem.as_ref() {
+            if let Some(last_segment) = path.segments.last() {
+                return last_segment.ident == "Vec";
+            }
+        }
+    }
+    false
+}
 pub fn extract_vec_inner_type(ty: &Type) -> Option<&Type> {
     if let Type::Path(type_path) = ty {
         if let Some(last_segment) = type_path.path.segments.last() {
@@ -268,6 +283,10 @@ pub fn extract_vec_inner_type(ty: &Type) -> Option<&Type> {
                 }
             }
         }
+    }
+    // &mut Vec<T> などの参照タイプも対応
+    if let Type::Reference(TypeReference { elem, .. }) = ty {
+        return extract_vec_inner_type(elem);
     }
     None
 }
@@ -283,6 +302,10 @@ pub fn extract_vec_inner_type_from_impl_trait(ty: &Type) -> Option<&Type> {
                         for arg in &args.args {
                             if let GenericArgument::Type(ty) = arg {
                                 return extract_vec_inner_type(ty);
+                            }
+                            // &mut Vec<T> などの参照タイプも対応
+                            if let Type::Reference(TypeReference { elem, .. }) = ty {
+                                return extract_vec_inner_type(elem);
                             }
                         }
                     }

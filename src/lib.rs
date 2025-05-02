@@ -12,6 +12,7 @@ mod tests {
     use crate::dxlib_types::*;
     use anyhow::Result as R;
     use std::f64::consts::PI;
+    use std::ffi::CStr;
     #[test]
     fn test_dxlib_1() -> R<(), DxLibError> {
         SetUseCharCodeFormat(DX_CHARCODEFORMAT_UTF8)?;
@@ -31,20 +32,12 @@ mod tests {
         let mut file_buffer = vec![1i8; file_buffer_size];
         let file_handle = FileRead_open("./test.txt", TRUE)?;
         {
-            FileRead_gets(
-                file_buffer.as_mut_ptr(),
-                file_buffer_size as i32,
-                file_handle,
-            );
+            FileRead_gets(&mut file_buffer, file_buffer_size as i32, file_handle);
             let file_buffer_u8 = file_buffer.iter().map(|&b| b as u8).collect();
             println!("{}", String::from_utf8(file_buffer_u8).unwrap());
         }
         {
-            FileRead_gets(
-                file_buffer.as_mut_ptr(),
-                file_buffer_size as i32,
-                file_handle,
-            );
+            FileRead_gets(&mut file_buffer, file_buffer_size as i32, file_handle);
             let file_buffer_u8 = file_buffer.iter().map(|&b| b as u8).collect();
             println!("{}", String::from_utf8(file_buffer_u8).unwrap());
         }
@@ -52,9 +45,15 @@ mod tests {
         FileRead_close(file_handle)?;
 
         let key_input_size: usize = 1024;
-        let key_input: Vec<CChar> = vec![0; key_input_size];
-        KeyInputString(0, 0, key_input_size as CInt, key_input, FALSE);
+        let mut key_input: Vec<CChar> = vec![0; key_input_size];
+        KeyInputString(0, 0, key_input_size as CInt, &mut key_input, FALSE);
 
+        // key_inputからUTF-8の文字列に変換
+        let key_input_string = unsafe {
+            CStr::from_ptr(key_input.as_ptr()) // ポインタからC文字列を取得
+                .to_string_lossy() // UTF-8に変換、無効なバイトはUTF-8のエラーを無視して処理
+                .into_owned() // String型に変換
+        };
         //let snd =
         //LoadSoundMem("D:/win/program/rb/main-project/youtube-download/touhou-mangetu.mp3")?;
         //PlaySoundMem(snd, DX_PLAYTYPE_LOOP, 0)?;
@@ -81,7 +80,7 @@ mod tests {
             DrawString(
                 x as i32,
                 y as i32,
-                "hello world こんにちは、世界",
+                key_input_string.as_str(),
                 GetColor(255, 255, 255)?,
             )?;
         }

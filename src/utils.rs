@@ -22,20 +22,3 @@ impl CStringHolder {
         self.ptr
     }
 }
-
-pub struct VecHolder<T> {
-    _vec: Vec<T>,
-    ptr: *mut T,
-}
-
-impl<T> VecHolder<T> {
-    pub fn new(vec: impl Into<Vec<T>>) -> Self {
-        let mut vec = vec.into();
-        let ptr = vec.as_mut_ptr();
-        Self { _vec: vec, ptr }
-    }
-
-    pub fn ptr(&self) -> *mut T {
-        self.ptr
-    }
-}

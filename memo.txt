@@ -10,4 +10,12 @@
 	DrawString(0,0,"あいうえお",GetColor(255,255,255))?;
 	DrawString(0,0,String::from("あいうえお"),GetColor(255,255,255))?;
 	も可能になる。
-
+追記 2025/05/02
+	とりあえず、基本的なものは実装できている。
+	現時点で、dxlib.rsのコメントの通り
+	&str,String,&Stringを指定した場合のみ、*const i8として変換されて渡される
+	Into<Vec<u8>>,Into<Vec<i8>>,Into<Vec<T>>,Vec<T>の場合のみ、*const Tに変換されて渡される
+	&mut Vec<T>の場合のみ、*mut Tに変換されて渡される
+	になっており、&mut String,&mut Into<Vec<T>>の処理を追加する必要あり。
+	また、&Into<Vec<u8>>,&Into<Vec<i8>>,&Into<Vec<T>>,&Vec<T>も*const Tに変換して渡すような処理を追加する必要あり。
+	尚、Vec以外に配列型、スライスもVecと同じような内部処理をして渡せるようにすると良い。
