@@ -2,6 +2,7 @@ pub mod dxlib;
 pub mod dxlib_constants;
 pub mod dxlib_error;
 pub mod dxlib_types;
+pub mod utils;
 pub use dxlib_rs_macro::dxlib_gen;
 
 mod tests {
@@ -14,20 +15,20 @@ mod tests {
     #[test]
     fn test_dxlib_1() -> R<(), DxLibError> {
         SetUseCharCodeFormat(DX_CHARCODEFORMAT_UTF8)?;
+        let window_title = "aiueo!! あいうえお!";
+        SetMainWindowText(window_title);
         ChangeWindowMode(None)?;
         DxLib_Init()?;
         SetDrawScreen(None)?;
         SetUseASyncLoadFlag(TRUE)?;
-        let mut x = 320.0;
-        let mut y = 240.0;
-        let mut vx = 0.0;
-        let mut vy = 0.0;
-        let mut angle = 0.0;
+
+        let center_x = 320.0;
+        let center_y = 240.0;
+        let radius = 100.0;
         let mut deg = 0;
-        let v = 2;
         let file_buffer_size: usize = 256;
 
-        let mut file_buffer = vec![0i8; file_buffer_size];
+        let mut file_buffer = vec![1i8; file_buffer_size];
         let file_handle = FileRead_open("./test.txt", TRUE)?;
         {
             FileRead_gets(
@@ -51,27 +52,29 @@ mod tests {
         FileRead_close(file_handle)?;
 
         let key_input_size: usize = 1024;
-        let key_input:Vec<CChar> = vec![0;key_input_size];
+        let key_input: Vec<CChar> = vec![0; key_input_size];
         KeyInputString(0, 0, key_input_size as CInt, key_input, FALSE);
 
+        //let snd =
+        //LoadSoundMem("D:/win/program/rb/main-project/youtube-download/touhou-mangetu.mp3")?;
+        //PlaySoundMem(snd, DX_PLAYTYPE_LOOP, 0)?;
 
         while ScreenFlip().is_ok()
             && ClearDrawScreen(None).is_ok()
             && ProcessMessage().is_ok()
             && CheckHitKey(KEY_INPUT_ESCAPE)? == FALSE
         {
-            x += vx;
-            y += vy;
-            deg += 1;
-            angle = 0.2 * deg as f64;
-            vx = v as f64 * f64::cos(angle * PI / 10.0);
-            vy = v as f64 * f64::sin(angle * PI / 10.0);
+            deg = (deg + 1) % 360;
+            let angle_rad = deg as f64 * std::f64::consts::PI / 180.0;
+
+            let x = center_x + radius * f64::cos(angle_rad);
+            let y = center_y + radius * f64::sin(angle_rad);
             DrawString(
                 0,
                 0,
                 &format!(
-                    "x: {:.2} y: {:.2} vx: {:.2} vy: {:.2} angle: {:.2} deg: {}",
-                    x, y, vx, vy, angle, deg
+                    "x: {:.2} y: {:.2} angle_rad: {:.2} deg: {}",
+                    x, y, angle_rad, deg
                 ),
                 GetColor(255, 255, 255)?,
             )?;
