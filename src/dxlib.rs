@@ -29,8 +29,13 @@ fn default_rect_ptr() -> *mut RECT {
 //	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T] -> *const T
 //	・&mut Vec<T>,&mut [T] -> *mut T
 //	・&mut String -> *mut std::os::raw::c_char
+//	・一部のジェネリック型の対応 
+//	    - impl AsRef<T>
+//	    - impl ToString
+//	    - impl Display
+//	尚、<A:AsRef<[u8]>>(buffer: A)等の書き方は許容されない
 //	== その他 マクロ仕様等 ==
-//	・指定戻り値 -> anyhow::Result<指定戻り値,DxLibError>
+//	・指定戻り値 -> anyhow::Result<指定戻り値,DxLibError>へ変換する
 //	・#[default="0"] Option<T> -> None時の渡すデフォルト値を指定したデフォルト値にする
 //	・#[alias="dxlib_init"] fn DxLib_Init() -> i32, -> 生成時の関数名を指定したエイリアス名にする
 //	・#[not_result] fn DxLib_Init() -> i32, -> 生成時の関数戻り値をanyhow::Resultに変換しない
@@ -63,7 +68,7 @@ dxlib_gen! {
         x: i32,
         y: i32,
         char_max_length: i32,
-        str_buffer: &mut [std::os::raw::c_char],
+        str_buffer: &mut Vec<std::os::raw::c_char>,
         cancel_valid_flag: i32,
     ) -> i32,
     // 文字列の引数の文字コードを設定する

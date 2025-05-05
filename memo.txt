@@ -39,5 +39,9 @@
 	・#[alias="dxlib_init"] fn DxLib_Init() -> i32, -> 生成時の関数名を指定したエイリアス名にする
 	・#[not_result] fn DxLib_Init() -> i32, -> 生成時の関数戻り値をanyhow::Resultに変換しない
 
-追記 2025/05/0
-	
+追記 2025/05/06
+	基本的に実装した。ただ、ジェネリック型はIntoは入れずに、
+	ToStringとDisplay、あとはAsRef<T>で十分かもしれない。
+	Into<Vec<T>>等は必要か微妙。
+	また、生成コードで文字列を扱う部分は、念の為、assert!
+	を入れておくと良いかもしれない。
