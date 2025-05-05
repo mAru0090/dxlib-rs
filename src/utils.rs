@@ -11,14 +11,13 @@ pub struct CStringHolder {
 impl CStringHolder {
     pub fn new(s: impl ToString) -> Self {
         let c_string = CString::new(s.to_string()).unwrap();
-        let ptr = c_string.as_ptr();
         Self {
             _c_string: c_string,
-            ptr,
+            ptr: std::ptr::null_mut(),
         }
     }
 
-    pub fn ptr(&self) -> *const i8 {
-        self.ptr
+    pub fn as_ptr(&self) -> *const std::os::raw::c_char {
+        self._c_string.as_ptr()
     }
 }

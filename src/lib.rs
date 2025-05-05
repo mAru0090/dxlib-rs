@@ -13,6 +13,7 @@ mod tests {
     use anyhow::Result as R;
     use std::f64::consts::PI;
     use std::ffi::CStr;
+    use std::os::raw::c_char;
     #[test]
     fn test_dxlib_1() -> R<(), DxLibError> {
         SetUseCharCodeFormat(DX_CHARCODEFORMAT_UTF8)?;
@@ -45,8 +46,11 @@ mod tests {
         FileRead_close(file_handle)?;
 
         let key_input_size: usize = 1024;
-        let mut key_input: Vec<CChar> = vec![0; key_input_size];
-        KeyInputString(0, 0, key_input_size as CInt, &mut key_input, FALSE);
+        let key_input_size = 128; // 例: 入力バッファのサイズ
+        let mut key_input: Vec<c_char> = vec![0; key_input_size]; // バッファの初期化
+
+        // KeyInputString 呼び出し時に Vec<CChar> を &mut [CChar] として渡す
+        KeyInputString(0, 0, key_input_size as i32, &mut key_input[..], FALSE); // スライスとして渡す
 
         // key_inputからUTF-8の文字列に変換
         let key_input_string = unsafe {

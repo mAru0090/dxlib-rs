@@ -3,6 +3,7 @@ use quote::{format_ident, quote};
 use syn::{
     Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat, PatType,
     PathArguments, ReturnType, Signature, Token, Type, TypeParamBound, TypePath, TypeReference,
+    TypeSlice,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
@@ -182,6 +183,69 @@ pub fn is_option(ty: &Type) -> Option<&Type> {
     }
     None
 }
+// 不変スライス（&[T]）かどうかを判定
+pub fn is_slice(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: None,
+        ..
+    }) = ty
+    {
+        matches!(**elem, Type::Slice(_))
+    } else {
+        false
+    }
+}
+
+// 不変スライスの要素型を抽出（&[T] → T）
+pub fn extract_slice(ty: &Type) -> Option<&Type> {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: None,
+        ..
+    }) = ty
+    {
+        if let Type::Slice(slice) = &**elem {
+            Some(&slice.elem)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+// 可変スライス（&mut [T]）かどうかを判定
+pub fn is_mut_slice(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        matches!(**elem, Type::Slice(_))
+    } else {
+        false
+    }
+}
+
+// 可変スライスの要素型を抽出（&mut [T] → T）
+pub fn extract_mut_slice(ty: &Type) -> Option<&Type> {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        if let Type::Slice(slice) = &**elem {
+            Some(&slice.elem)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
 
 pub fn extract_error_condition(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenStream> {
     for attr in attrs {
@@ -309,6 +373,44 @@ pub fn extract_vec_inner_type_from_impl_trait(ty: &Type) -> Option<&Type> {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+    None
+}
+
+// 不変 Vec<T> の判定（&Vec<T>）
+pub fn is_ref_vec_type(ty: &Type) -> Option<()> {
+    if let Type::Reference(TypeReference {
+        elem, mutability, ..
+    }) = ty
+    {
+        if mutability.is_none() {
+            if let Type::Path(TypePath { path, .. }) = elem.as_ref() {
+                if let Some(last_segment) = path.segments.last() {
+                    if last_segment.ident == "Vec" {
+                        return Some(()); // 不変 Vec<T>
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// 可変 Vec<T> の判定（&mut Vec<T>）
+pub fn is_mut_ref_vec_type(ty: &Type) -> Option<()> {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        if let Type::Path(TypePath { path, .. }) = elem.as_ref() {
+            if let Some(last_segment) = path.segments.last() {
+                if last_segment.ident == "Vec" {
+                    return Some(()); // 可変 Vec<T>
                 }
             }
         }

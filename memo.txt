@@ -19,3 +19,25 @@
 	になっており、&mut String,&mut Into<Vec<T>>の処理を追加する必要あり。
 	また、&Into<Vec<u8>>,&Into<Vec<i8>>,&Into<Vec<T>>,&Vec<T>も*const Tに変換して渡すような処理を追加する必要あり。
 	尚、Vec以外に配列型、スライスもVecと同じような内部処理をして渡せるようにすると良い。
+	また、Intoやその他Vecの型で、内部でu8とi8で分けているが、std::os::raw::c_charを使用すれば
+	いい。
+	ジェネリック型対応について、
+	現在は impl Trait のみ対応（例: impl ToString, impl Into<Vec<T>>）
+	型パラメータ付きのジェネリック関数（fn foo<T>(...)）およびトレイト境界付き（T: Clone + 'static など）は非対応
+	必要な場合は明示的なimpl Trait形式で記述すること
+
+	現時点で色々な変換、マクロ仕様について列挙しておく。
+	ただし、実装してないのも含め下記は理想形になる。
+	== 引数変換等 == 
+	・&str,String,&String -> *const std::os::raw::c_char 
+	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T] -> *const T
+	・&mut Vec<T>,&mut [T] -> *mut T
+	・&mut String -> *mut std::os::raw::c_char
+	== その他 マクロ仕様等 == 
+	・指定戻り値 -> anyhow::Result<指定戻り値,DxLibError>
+	・#[default="0"] Option<T> -> None時の渡すデフォルト値を指定したデフォルト値にする
+	・#[alias="dxlib_init"] fn DxLib_Init() -> i32, -> 生成時の関数名を指定したエイリアス名にする
+	・#[not_result] fn DxLib_Init() -> i32, -> 生成時の関数戻り値をanyhow::Resultに変換しない
+
+追記 2025/05/0
+	

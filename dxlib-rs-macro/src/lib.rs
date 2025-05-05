@@ -51,6 +51,7 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
     // CString を使うための import
     let mut output = quote! {
         use std::ffi::CString;
+        use std::os::raw::c_char;
     };
 
     for FunctionWithAttrs { attrs, sig } in fns.iter() {
@@ -102,12 +103,12 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
 
                 if is_impl_to_string(&ty) {
                     wrapper_args.push(quote! { #ident: impl ToString });
-                    extern_args.push(quote! { #ident: *const i8 });
+                    extern_args.push(quote! { #ident: *const c_char });
 
                     let holder_ident = format_ident!("__{}_holder", ident);
                     convert_stmts.push(quote! {
                         let #holder_ident = CStringHolder::new(#ident.to_string());
-                        let #ident = #holder_ident.ptr();
+                        let #ident = #holder_ident.as_ptr();
                     });
 
                     call_idents.push(quote! { #ident });
@@ -116,49 +117,26 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
 
                 if is_impl_display(&ty) {
                     wrapper_args.push(quote! { #ident: impl Display });
-                    extern_args.push(quote! { #ident: *const i8 });
+                    extern_args.push(quote! { #ident: *const c_char });
 
                     let holder_ident = format_ident!("__{}_holder", ident);
                     convert_stmts.push(quote! {
                         let #holder_ident = CStringHolder::new(#ident.to_string());
-                        let #ident = #holder_ident.ptr();
+                        let #ident = #holder_ident.as_ptr();
                     });
 
                     call_idents.push(quote! { #ident });
                     continue;
                 }
 
-                // impl Into<Vec<任意の型>> に対応し、Vec<i8>,Vec<u8> の場合だけ別処理
+                // `impl Into<Vec<T>>` の場合、不変と可変を分けて処理
                 if is_impl_trait_into_vec(&ty) {
                     // Vec<T> の T を取得
                     let inner_ty = extract_vec_inner_type_from_impl_trait(&ty);
 
                     if let Some(inner_ty) = inner_ty {
-                        if type_eq(inner_ty, &parse_str("i8").unwrap()) {
-                            // 特別扱い: Vec<i8> → *const i8
-                            wrapper_args.push(quote! { #ident: impl Into<Vec<i8>> });
-                            extern_args.push(quote! { #ident: *const i8 });
-
-                            convert_stmts.push(quote! {
-                                let #ident = #ident.as_ptr();
-                            });
-
-                            call_idents.push(quote! { #ident });
-                            continue;
-                        }
-                        if type_eq(inner_ty, &parse_str("u8").unwrap()) {
-                            // 特別扱い: Vec<i8> → *const i8
-                            wrapper_args.push(quote! { #ident: impl Into<Vec<u8>> });
-                            extern_args.push(quote! { #ident: *const u8 });
-
-                            convert_stmts.push(quote! {
-                                let #ident = #ident.as_ptr();
-                            });
-
-                            call_idents.push(quote! { #ident });
-                            continue;
-                        } else {
-                            // 汎用対応: Vec<T> → *const T
+                        // 不変Vec<T> → *const T
+                        if let Some(_) = is_ref_vec_type(&ty) {
                             wrapper_args.push(quote! { #ident: impl Into<Vec<#inner_ty>> });
                             extern_args.push(quote! { #ident: *const #inner_ty });
 
@@ -169,9 +147,45 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                             call_idents.push(quote! { #ident });
                             continue;
                         }
+                        // 可変Vec<T> → *mut T
+                        else if let Some(_) = is_mut_ref_vec_type(&ty) {
+                            wrapper_args.push(quote! { #ident: impl Into<Vec<#inner_ty>> });
+                            extern_args.push(quote! { #ident: *mut #inner_ty });
+
+                            convert_stmts.push(quote! {
+                                let #ident = #ident.as_mut_ptr();
+                            });
+
+                            call_idents.push(quote! { #ident });
+                            continue;
+                        }
                     }
                 }
+                // 不変スライスの場合は、*const Tに変換
+                if is_slice(&ty) {
+                    let inner_ty = extract_slice(&ty);
+                    wrapper_args.push(quote! { #ident: &[#inner_ty] });
+                    extern_args.push(quote! { #ident: *const #inner_ty });
 
+                    convert_stmts.push(quote! {
+                        let #ident = #ident.as_ptr();
+                    });
+
+                    call_idents.push(quote! { #ident });
+                    continue;
+                // 可変スライスの場合は、*mut Tに変換
+                } else if is_mut_slice(&ty) {
+                    let inner_ty = extract_mut_slice(&ty);
+                    wrapper_args.push(quote! { #ident: &mut [#inner_ty] });
+                    extern_args.push(quote! { #ident: *mut #inner_ty });
+
+                    convert_stmts.push(quote! {
+                        let #ident = #ident.as_mut_ptr();
+                    });
+
+                    call_idents.push(quote! { #ident });
+                    continue;
+                }
                 // Vec<T>の場合は、*const Tに変換
                 if is_vec_type(&ty) {
                     let inner_ty = extract_vec_inner_type(&ty);
@@ -198,17 +212,17 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                     continue;
                 }
 
-                // &str の場合は CString に変換
+                // &str の場合は *const c_char に変換
                 if let Type::Reference(TypeReference { elem, .. }) = &**ty {
                     if let Type::Path(TypePath { path, .. }) = &**elem {
                         if path.is_ident("str") {
                             wrapper_args.push(quote! { #ident: &str });
-                            extern_args.push(quote! { #ident: *const i8 });
+                            extern_args.push(quote! { #ident: *const c_char });
 
                             let holder_ident = format_ident!("__{}_holder", ident);
                             convert_stmts.push(quote! {
                                 let #holder_ident = CStringHolder::new(#ident.to_string());
-                                let #ident = #holder_ident.ptr();
+                                let #ident = #holder_ident.as_ptr();
                             });
 
                             call_idents.push(quote! { #ident });
@@ -217,16 +231,16 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                // String の場合は CString に変換
+                // String の場合は *const c_char に変換
                 if let Type::Path(TypePath { path, .. }) = &**ty {
                     if path.is_ident("String") {
                         wrapper_args.push(quote! { #ident: String });
-                        extern_args.push(quote! { #ident: *const i8 });
+                        extern_args.push(quote! { #ident: *const c_char });
 
                         let holder_ident = format_ident!("__{}_holder", ident);
                         convert_stmts.push(quote! {
                             let #holder_ident = CStringHolder::new(#ident.to_string());
-                            let #ident = #holder_ident.ptr();
+                            let #ident = #holder_ident.as_ptr();
                         });
 
                         call_idents.push(quote! { #ident });
@@ -234,16 +248,16 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                // &String の場合は CString に変換
+                // &String の場合は *const c_char に変換
                 if let Type::Reference(TypeReference { elem, .. }) = &**ty {
                     if let Type::Path(TypePath { path, .. }) = &**elem {
                         if path.is_ident("String") {
                             wrapper_args.push(quote! { #ident: &String });
-                            extern_args.push(quote! { #ident: *const i8 });
+                            extern_args.push(quote! { #ident: *const c_char });
                             let holder_ident = format_ident!("__{}_holder", ident);
                             convert_stmts.push(quote! {
                                 let #holder_ident = CStringHolder::new(#ident.to_string());
-                                let #ident = #holder_ident.ptr();
+                                let #ident = #holder_ident.as_ptr();
                             });
 
                             call_idents.push(quote! { #ident });
@@ -251,7 +265,28 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                         }
                     }
                 }
+                // &mut String の場合は CString に変換 (可変ポインタ *mut c_char)
+                if let Type::Reference(TypeReference {
+                    elem, mutability, ..
+                }) = &**ty
+                {
+                    if let Type::Path(TypePath { path, .. }) = &**elem {
+                        if path.is_ident("String") && mutability.is_some() {
+                            // &mut String の場合
+                            wrapper_args.push(quote! { #ident: &mut String });
+                            extern_args.push(quote! { #ident: *mut c_char });
+                            let holder_ident = format_ident!("__{}_holder", ident);
+                            convert_stmts.push(quote! {
+                                // String を CString に変換し、所有権を取得
+                                let #holder_ident = CString::new(#ident.clone()).unwrap();  // cloneして保持
+                                let #ident = #holder_ident.into_raw();  // *mut c_char を取得
+                            });
 
+                            call_idents.push(quote! { #ident });
+                            continue;
+                        }
+                    }
+                }
                 // それ以外はそのまま
                 wrapper_args.push(quote! { #ident: #ty });
                 extern_args.push(quote! { #ident: #ty });

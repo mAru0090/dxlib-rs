@@ -24,14 +24,16 @@ fn default_rect_ptr() -> *mut RECT {
 // }
 // DxLib特有の定数は、dxlib_constantsに記述されている
 // 基本的にDxLibの関数シグネチャ通りに渡すことが可能
-// 関数シグネチャの前に#[alias = "dxlib_init"]等をした場合、エイリアスをつけて関数生成が可能
-// 関数シグネチャの前に#[not_result]等をした場合、その関数はanyhow::Result<指定した型,DxLibError>に変換されなくなる
-// 生成される関数の戻り値は、すべてanyhow::Result<指定した型,DxLibError>に変換される
-// Option型を引数に使用した場合、引数前に#[default = "0"]等することで、None時に渡す値を設定可能
-// Resultのエラー分岐条件を変更したい場合、関数宣言前に、[#error_confition = "result == 0"]などをすることが可能
-// &str,String,&Stringを指定した場合のみ、*const i8として変換されて渡される
-// Into<Vec<u8>>,Into<Vec<i8>>,Into<Vec<T>>,Vec<T>,&Into<Vec<u8>>,&Into<Vec<i8>>,&Into<Vec<T>>,&Vec<T>の場合のみ、*const Tに変換されて渡される
-// &mut Vec<T>の場合のみ、*mut Tに変換されて渡される
+//	== 引数変換等 ==
+//	・&str,String,&String -> *const std::os::raw::c_char
+//	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T] -> *const T
+//	・&mut Vec<T>,&mut [T] -> *mut T
+//	・&mut String -> *mut std::os::raw::c_char
+//	== その他 マクロ仕様等 ==
+//	・指定戻り値 -> anyhow::Result<指定戻り値,DxLibError>
+//	・#[default="0"] Option<T> -> None時の渡すデフォルト値を指定したデフォルト値にする
+//	・#[alias="dxlib_init"] fn DxLib_Init() -> i32, -> 生成時の関数名を指定したエイリアス名にする
+//	・#[not_result] fn DxLib_Init() -> i32, -> 生成時の関数戻り値をanyhow::Resultに変換しない
 // =======================================================
 dxlib_gen! {
     // ライブラリ名
@@ -61,7 +63,7 @@ dxlib_gen! {
         x: i32,
         y: i32,
         char_max_length: i32,
-        str_buffer: &mut Vec<std::os::raw::c_char>,
+        str_buffer: &mut [std::os::raw::c_char],
         cancel_valid_flag: i32,
     ) -> i32,
     // 文字列の引数の文字コードを設定する
