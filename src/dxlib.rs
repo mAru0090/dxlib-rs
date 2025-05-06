@@ -29,9 +29,11 @@ fn default_rect_ptr() -> *mut RECT {
 //	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T],[T;N] -> *const T
 //	・&mut Vec<T>,&mut [T],[T;N] -> *mut T
 //	・&mut String -> *mut std::os::raw::c_char
-//	・一部のジェネリック型の対応(現在はToStringのみ)
-//	    ✕ impl AsRef<T>
-//	    〇 impl ToString
+//	・一部のジェネリック型の対応
+//	    〇impl AsRef<T>
+//	    〇impl AsMut<T>
+//	    〇&mut impl AsMut<T>
+//	    〇impl ToString
 //	    ✕ impl Display
 //	尚、<A:AsRef<[u8]>>(buffer: A)等の書き方は許容されない
 //	== その他 マクロ仕様等 ==
@@ -79,15 +81,15 @@ dxlib_gen! {
     #[error_condition = "result == i32::MAX"]
     fn GetColor(red: i32, green: i32, blue: i32) -> i32,
     // 文字列を描画する
-    fn DrawString(x: i32, y: i32, string: impl ToString, color: i32) -> i32,
-    fn LoadGraph(file_name: impl ToString) -> i32,
+    fn DrawString(x: i32, y: i32, string: impl AsRef<str>, color: i32) -> i32,
+    fn LoadGraph(file_name: impl AsRef<str>) -> i32,
     fn DrawGraph(x: i32, y: i32, gr_handle: i32, trans_flag: i32) -> i32,
     fn PlaySoundMem(sound_handle: i32, play_type: i32, top_position_flag: i32) -> i32,
-    fn LoadSoundMem(file_name: impl ToString) -> i32,
+    fn LoadSoundMem(file_name: impl AsRef<str>) -> i32,
     #[error_condition = "result == i32::MAX"]
     fn CheckHitKey(key_code: i32) -> i32,
-    fn FileRead_open(file_path: impl ToString,r#async: i32) -> i32,
-    fn FileRead_size(file_path: impl ToString) -> std::os::raw::c_long,
+    fn FileRead_open(file_path: impl AsRef<str>,r#async: i32) -> i32,
+    fn FileRead_size(file_path: impl AsRef<str>) -> std::os::raw::c_long,
     fn FileRead_close(file_handle: i32) -> i32,
     fn FileRead_tell(file_handle: i32) -> std::os::raw::c_long,
     fn FileRead_seek(file_handle: i32,offset: std::os::raw::c_long,origin: i32) -> i32,

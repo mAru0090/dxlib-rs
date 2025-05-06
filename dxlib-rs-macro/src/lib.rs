@@ -223,6 +223,28 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                                     continue;
                                 }
                             }
+                        } else {
+                            if let Some(inner_ty) = extract_as_mut_generic(&ref_type.elem) {
+                                // &impl AsMut<[T]> にマッチ
+                                if let Type::Slice(slice) = inner_ty {
+                                    let elem_ty = &slice.elem;
+
+                                    wrapper_args.push(quote! {
+                                        #ident: &impl AsMut<[#elem_ty]>
+                                    });
+
+                                    extern_args.push(quote! {
+                                        #ident: *mut #elem_ty
+                                    });
+
+                                    convert_stmts.push(quote! {
+                                        let #ident = #ident.as_mut().as_mut_ptr();
+                                    });
+
+                                    call_idents.push(quote! { #ident });
+                                    continue;
+                                }
+                            }
                         }
                     }
 
