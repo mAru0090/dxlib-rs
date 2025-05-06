@@ -59,7 +59,7 @@ dxlib_gen! {
     // ウインドウモード・フルスクリーンモードの変更を行う
     fn ChangeWindowMode(#[default = "1"] flag:Option<i32>) -> i32,
     // ウインドウのタイトルを変更する
-    fn SetMainWindowText(window_text: impl ToString) -> i32,
+    fn SetMainWindowText(window_text: impl AsRef<str>) -> i32,
     // キーの入力待ち
     #[error_condition = "result == i32::MAX"]
     fn WaitKey() -> i32,
@@ -68,7 +68,7 @@ dxlib_gen! {
         x: i32,
         y: i32,
         char_max_length: i32,
-        str_buffer: &mut [std::os::raw::c_char;1024],
+        str_buffer:&mut impl AsMut<[std::os::raw::c_char]>,
         cancel_valid_flag: i32,
     ) -> i32,
     // 文字列の引数の文字コードを設定する

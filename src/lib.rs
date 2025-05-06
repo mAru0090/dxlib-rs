@@ -47,8 +47,8 @@ mod tests {
 
         let key_input_size: usize = 1024;
         let key_input_size = 128; // 例: 入力バッファのサイズ
-        //let mut key_input: Vec<c_char> = vec![0; key_input_size]; // バッファの初期化
-        let mut key_input: [c_char; 1024] = [0; 1024];
+        let mut key_input: Vec<c_char> = vec![0; key_input_size]; // バッファの初期化
+        //let mut key_input: [c_char; 1024] = [0; 1024];
         KeyInputString(0, 0, key_input_size as i32, &mut key_input, FALSE); // スライスとして渡す
 
         // KeyInputString 呼び出し時に Vec<CChar> を &mut [CChar] として渡す

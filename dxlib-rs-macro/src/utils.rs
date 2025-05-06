@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat, PatType,
-    PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeParamBound, TypePath,
-    TypeReference, TypeSlice,
+    PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeImplTrait, TypeParamBound,
+    TypePath, TypeReference, TypeSlice,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
@@ -171,6 +171,7 @@ pub fn extract_default_expr(attrs: &[syn::Attribute]) -> Option<proc_macro2::Tok
     }
     None
 }
+// Option<T>かどうかを判定
 pub fn is_option(ty: &Type) -> Option<&Type> {
     if let Type::Path(TypePath { path, .. }) = ty {
         if path.segments.len() == 1 && path.segments[0].ident == "Option" {
@@ -183,6 +184,111 @@ pub fn is_option(ty: &Type) -> Option<&Type> {
     }
     None
 }
+
+// AsRef<T>かどうかを判定
+pub fn is_impl_as_ref_type(ty: &Type) -> bool {
+    // 参照型(&T, &mut T)の場合
+    if let Type::Reference(ref_type) = ty {
+        // &mutの場合も対象にする
+        return is_impl_as_ref_type(&ref_type.elem);
+    }
+
+    // 通常のimpl AsRef<T>の場合
+    if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+        for bound in bounds {
+            if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                let segments = &trait_bound.path.segments;
+                if let Some(segment) = segments.last() {
+                    if segment.ident == "AsRef" {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+// AsRef<T>を取り出して返す
+pub fn extract_as_ref_generic(ty: &Type) -> Option<&Type> {
+    // 参照型(&T, &mut T)の場合
+    if let Type::Reference(ref_type) = ty {
+        return extract_as_ref_generic(&ref_type.elem);
+    }
+
+    // 通常のimpl AsRef<T>の場合
+    if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+        for bound in bounds {
+            if let TypeParamBound::Trait(trait_bound) = bound {
+                let segments = &trait_bound.path.segments;
+                if let Some(segment) = segments.last() {
+                    if segment.ident == "AsRef" {
+                        if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                            for arg in &args.args {
+                                if let GenericArgument::Type(inner_ty) = arg {
+                                    return Some(inner_ty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// AsMut<T>かどうかを判定
+pub fn is_impl_as_mut_type(ty: &Type) -> bool {
+    // 参照型(&T, &mut T)の場合
+    if let Type::Reference(ref_type) = ty {
+        // &mutの場合も対象にする
+        return is_impl_as_mut_type(&ref_type.elem);
+    }
+
+    // 通常のimpl AsMut<T>の場合
+    if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+        for bound in bounds {
+            if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                if let Some(segment) = trait_bound.path.segments.last() {
+                    if segment.ident == "AsMut" {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn extract_as_mut_generic(ty: &Type) -> Option<&Type> {
+    // 参照型(&T, &mut T)の場合
+    if let Type::Reference(ref_type) = ty {
+        return extract_as_mut_generic(&ref_type.elem);
+    }
+
+    // 通常のimpl AsMut<T>の場合
+    if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+        for bound in bounds {
+            if let TypeParamBound::Trait(trait_bound) = bound {
+                let segments = &trait_bound.path.segments;
+                if let Some(segment) = segments.last() {
+                    if segment.ident == "AsMut" {
+                        if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                            for arg in &args.args {
+                                if let GenericArgument::Type(inner_ty) = arg {
+                                    return Some(inner_ty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 // 配列[num;T]かどうかを判定
 pub fn is_array(ty: &Type) -> bool {
     matches!(*ty, Type::Array(_))

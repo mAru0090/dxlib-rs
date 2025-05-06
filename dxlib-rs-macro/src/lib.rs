@@ -101,6 +101,154 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                     continue;
                 }
 
+                if is_impl_as_ref_type(&ty) {
+                    // まず ty 自体が参照型かどうかを判定
+                    if let Type::Reference(ref_type) = &**ty {
+                        if let Some(inner_ty) = extract_as_ref_generic(&ref_type.elem) {
+                            if ref_type.mutability.is_none() {
+                                if let Type::Path(type_path) = inner_ty {
+                                    let ident_str =
+                                        type_path.path.segments.last().unwrap().ident.to_string();
+
+                                    if ident_str == "str" || ident_str == "String" {
+                                        wrapper_args.push(quote! {
+                                            #ident: &impl AsRef<#inner_ty>
+                                        });
+
+                                        extern_args.push(quote! {
+                                            #ident: *const ::std::os::raw::c_char
+                                        });
+
+                                        let holder_ident = format_ident!("__{}_holder", ident);
+                                        convert_stmts.push(quote! {
+                                            let #holder_ident = CStringHolder::new(#ident.as_ref());
+                                            let #ident = #holder_ident.as_ptr();
+                                        });
+
+                                        call_idents.push(quote! { #ident });
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                if let Type::Path(type_path) = inner_ty {
+                                    let ident_str =
+                                        type_path.path.segments.last().unwrap().ident.to_string();
+
+                                    if ident_str == "str" || ident_str == "String" {
+                                        wrapper_args.push(quote! {
+                                            #ident: &mut impl AsRef<#inner_ty>
+                                        });
+
+                                        extern_args.push(quote! {
+                                            #ident: *const ::std::os::raw::c_char
+                                        });
+
+                                        let holder_ident = format_ident!("__{}_holder", ident);
+                                        convert_stmts.push(quote! {
+                                            let #holder_ident = CStringHolder::new(#ident.as_ref());
+                                            let #ident = #holder_ident.as_ptr();
+                                        });
+
+                                        call_idents.push(quote! { #ident });
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 通常の impl AsRef<T> 型（参照ではない）
+                    if let Some(inner_ty) = extract_as_ref_generic(&ty) {
+                        if let Type::Path(type_path) = inner_ty {
+                            let ident_str =
+                                type_path.path.segments.last().unwrap().ident.to_string();
+                            if ident_str == "str" || ident_str == "String" {
+                                wrapper_args.push(quote! {
+                                    #ident: impl AsRef<#inner_ty>
+                                });
+
+                                extern_args.push(quote! {
+                                    #ident: *const ::std::os::raw::c_char
+                                });
+
+                                let holder_ident = format_ident!("__{}_holder", ident);
+                                convert_stmts.push(quote! {
+                                    let #holder_ident = CStringHolder::new(#ident.as_ref());
+                                    let #ident = #holder_ident.as_ptr();
+                                });
+
+                                call_idents.push(quote! { #ident });
+                                continue;
+                            }
+                        }
+
+                        // 汎用パターン（*const T）
+                        wrapper_args.push(quote! {
+                            #ident: impl AsRef<#inner_ty>
+                        });
+
+                        extern_args.push(quote! {
+                            #ident: *const #inner_ty
+                        });
+
+                        convert_stmts.push(quote! {
+                            let #ident = #ident.as_ref().as_ptr();
+                        });
+
+                        call_idents.push(quote! { #ident });
+                        continue;
+                    }
+                } else if is_impl_as_mut_type(&ty) {
+                    // まず `ty` 自体が参照型かどうかを判定する
+                    if let Type::Reference(ref_type) = &**ty {
+                        if ref_type.mutability.is_some() {
+                            if let Some(inner_ty) = extract_as_mut_generic(&ref_type.elem) {
+                                // &mut impl AsMut<[T]> にマッチ
+                                if let Type::Slice(slice) = inner_ty {
+                                    let elem_ty = &slice.elem;
+
+                                    wrapper_args.push(quote! {
+                                        #ident: &mut impl AsMut<[#elem_ty]>
+                                    });
+
+                                    extern_args.push(quote! {
+                                        #ident: *mut #elem_ty
+                                    });
+
+                                    convert_stmts.push(quote! {
+                                        let #ident = #ident.as_mut().as_mut_ptr();
+                                    });
+
+                                    call_idents.push(quote! { #ident });
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    // 通常の impl AsMut<[T]> 型の処理
+                    if let Some(inner_ty) = extract_as_mut_generic(&ty) {
+                        if let Type::Slice(slice) = inner_ty {
+                            let elem_ty = &slice.elem;
+
+                            wrapper_args.push(quote! {
+                                #ident: impl AsMut<[#elem_ty]>
+                            });
+
+                            extern_args.push(quote! {
+                                #ident: *mut #elem_ty
+                            });
+
+                            convert_stmts.push(quote! {
+                                let #ident = #ident.as_mut().as_mut_ptr();
+                            });
+
+                            call_idents.push(quote! { #ident });
+                            continue;
+                        }
+                    }
+                }
+
                 if is_impl_to_string(&ty) {
                     wrapper_args.push(quote! { #ident: impl ToString });
                     extern_args.push(quote! { #ident: *const c_char });
