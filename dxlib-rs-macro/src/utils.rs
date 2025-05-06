@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat, PatType,
-    PathArguments, ReturnType, Signature, Token, Type, TypeParamBound, TypePath, TypeReference,
-    TypeSlice,
+    PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeParamBound, TypePath,
+    TypeReference, TypeSlice,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
@@ -183,6 +183,54 @@ pub fn is_option(ty: &Type) -> Option<&Type> {
     }
     None
 }
+// 配列[num;T]かどうかを判定
+pub fn is_array(ty: &Type) -> bool {
+    matches!(*ty, Type::Array(_))
+}
+pub fn extract_array(ty: &Type) -> Option<(&Type, &Expr)> {
+    if let Type::Array(TypeArray { elem, len, .. }) = ty {
+        Some((elem.as_ref(), len))
+    } else {
+        None
+    }
+}
+// 可変配列（&mut [T;N]）かどうかを判定
+pub fn is_mut_array(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        matches!(**elem, Type::Array(_))
+    } else {
+        false
+    }
+}
+
+// `&mut [T; N]` を受け取り、要素型 `T` と長さ `N` を返す
+pub fn extract_mut_array(ty: &Type) -> Option<(&Type, &Expr)> {
+    if let Type::Reference(TypeReference {
+        elem,
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        if let Type::Array(TypeArray {
+            elem: array_elem,
+            len,
+            ..
+        }) = &**elem
+        {
+            Some((array_elem.as_ref(), len))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 // 不変スライス（&[T]）かどうかを判定
 pub fn is_slice(ty: &Type) -> bool {
     if let Type::Reference(TypeReference {

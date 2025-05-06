@@ -26,13 +26,13 @@ fn default_rect_ptr() -> *mut RECT {
 // 基本的にDxLibの関数シグネチャ通りに渡すことが可能
 //	== 引数変換等 ==
 //	・&str,String,&String -> *const std::os::raw::c_char
-//	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T] -> *const T
-//	・&mut Vec<T>,&mut [T] -> *mut T
+//	・Vec<T>,&Vec<T>,Into<Vec<T>>,&Into<Vec<T>>,&[T],[T;N] -> *const T
+//	・&mut Vec<T>,&mut [T],[T;N] -> *mut T
 //	・&mut String -> *mut std::os::raw::c_char
-//	・一部のジェネリック型の対応 
-//	    - impl AsRef<T>
-//	    - impl ToString
-//	    - impl Display
+//	・一部のジェネリック型の対応(現在はToStringのみ)
+//	    ✕ impl AsRef<T>
+//	    〇 impl ToString
+//	    ✕ impl Display
 //	尚、<A:AsRef<[u8]>>(buffer: A)等の書き方は許容されない
 //	== その他 マクロ仕様等 ==
 //	・指定戻り値 -> anyhow::Result<指定戻り値,DxLibError>へ変換する
@@ -68,7 +68,7 @@ dxlib_gen! {
         x: i32,
         y: i32,
         char_max_length: i32,
-        str_buffer: &mut Vec<std::os::raw::c_char>,
+        str_buffer: &mut [std::os::raw::c_char;1024],
         cancel_valid_flag: i32,
     ) -> i32,
     // 文字列の引数の文字コードを設定する

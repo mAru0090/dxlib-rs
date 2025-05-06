@@ -161,6 +161,30 @@ pub fn dxlib_gen(input: TokenStream) -> TokenStream {
                         }
                     }
                 }
+                // 配列の場合は、*const Tに変換
+                if is_array(&ty) {
+                    let (inner_ty, n) = extract_array(&ty).unwrap();
+                    wrapper_args.push(quote! { #ident: [#inner_ty;#n] });
+                    extern_args.push(quote! { #ident: *const #inner_ty });
+
+                    convert_stmts.push(quote! {
+                        let #ident = #ident.as_ptr();
+                    });
+
+                    call_idents.push(quote! { #ident });
+                    continue;
+                } else if is_mut_array(&ty) {
+                    let (inner_ty, n) = extract_mut_array(&ty).unwrap();
+                    wrapper_args.push(quote! { #ident: &mut [#inner_ty;#n] });
+                    extern_args.push(quote! { #ident: *mut #inner_ty });
+
+                    convert_stmts.push(quote! {
+                        let #ident = #ident.as_mut_ptr();
+                    });
+
+                    call_idents.push(quote! { #ident });
+                    continue;
+                }
                 // 不変スライスの場合は、*const Tに変換
                 if is_slice(&ty) {
                     let inner_ty = extract_slice(&ty);

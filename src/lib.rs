@@ -47,14 +47,15 @@ mod tests {
 
         let key_input_size: usize = 1024;
         let key_input_size = 128; // 例: 入力バッファのサイズ
-        let mut key_input: Vec<c_char> = vec![0; key_input_size]; // バッファの初期化
-
+        //let mut key_input: Vec<c_char> = vec![0; key_input_size]; // バッファの初期化
+        let mut key_input: [c_char; 1024] = [0; 1024];
         KeyInputString(0, 0, key_input_size as i32, &mut key_input, FALSE); // スライスとして渡す
 
         // KeyInputString 呼び出し時に Vec<CChar> を &mut [CChar] として渡す
         //KeyInputString(0, 0, key_input_size as i32, &mut key_input[..], FALSE); // スライスとして渡す
 
         // key_inputからUTF-8の文字列に変換
+
         let key_input_string = unsafe {
             CStr::from_ptr(key_input.as_ptr()) // ポインタからC文字列を取得
                 .to_string_lossy() // UTF-8に変換、無効なバイトはUTF-8のエラーを無視して処理
