@@ -48,3 +48,214 @@
 	基本できたとはいえ、utilsが乱雑すぎるため、
 	例えば、可変、不変参照かどうか見る is_mut(),is_ref()等を汎用的にして、
 	その他も汎用的にさせないとごちゃごちゃすぎる
+追記 2025/05/08
+dxlib-rsで作成したdxlib_gen!を、下記の様な汎用rust向けffi生成関数として作成する方が、
+後々良いのかもしれない。
+
+
+
+
+== 基本設計等 ==
+・dxlib_genと別で、解析する処理は構造体と関数に分ける
+	- dxlib_rsのutils内の解析関係は全てCFFIAnalayzer::* のグローバルな静的関数にするなど(&self,&mutはなし) 
+	enum RawPointer<T> {
+    		Mutable(*mut T),
+    		Constant(*const T),
+	}
+	- 引数変換処理の対応コールバック関数
+		・fn (&str) -> RawPointer
+		・fn (String) -> RawPointer
+		・fn (Vec<c_char>) -> RawPointer
+
+
+== 基本仕様 == 
+・cffi_gen!は、Cライブラリ等のラップ関数を自動的に生成するマクロ
+・主にstd,その他ユーティリティ、anyhowとthiserrorに依存
+・基本的に何もしない場合は、全て関数名通りのunsage externが作成され、
+それらをそのまま呼び出せる形になる。
+つまり、
+	#[library_name="DxLib_x64"]
+	cffi_gen! {
+ 		fn dx_DxLib_Init() -> i32,
+	}
+等をした場合は、そのままdx_DxLib_Initが作成され、指定のライブラリ名.libと.dllを参照して実行することとなる
+・もしrust風のラップを行いたい場合は、
+	#[library_name("DxLib_x64")]
+	#[as_result] 
+	#[arg_convert(default)] 
+	cffi_gen! {
+  		fn dx_DxLib_Init() -> i32,
+	}
+等のようにすることで、内部的には、fn dx_DxLib_Init() -> anyhow::Result<i32,FFI_GeneralError>が生成される。また、エラー型を指定したい場合は、マクロトップレベルで、
+	#[as_result_error_type("CustomError")]
+を指定する、もしくは関数の前にこれを指定する。
+
+・マクロの基本的な仕様
+	- #[library_name(value)] : マクロトップダウンでのみ使用可能
+		・ライブラリ名の指定
+	- #[func_name(value)] : 関数宣言上部でのみ使用可能
+		・リンク時に使用する関数名を指定した名前にして、生成
+	- #[func_alias(value)] : 関数宣言上部でのみ使用可能
+		・実際に使用可能になる関数が指定の名前で生成される(ffiでの名前は、関数宣言自体で指定した名前、もしくは#[func_name(value)]で指定された名前が使用される
+		そのため、
+			#[func_alias("dxlib_init")]
+  			fn dx_DxLib_Init() -> i32,
+		等をした場合、ffi用の
+			fn dx_DxLib_Init() -> i32;
+		が生成され、使用者向けの
+			fn dxlib_init() -> i32 {
+				// 具体的なコード
+				dx_DxLib_Init()
+			}
+		が生成される。
+		尚、#[func_name(value)]が併用され場合、
+			#[func_name("dx_DxLib_Init2")]
+			#[func_alias("dxlib_init")]
+  			fn dx_DxLib_Init2() -> i32,
+		等をした場合、
+			ffi用のdx_DxLib_Init2() -> i32;
+			が生成され、
+			使用者向けのdxlib_init() -> i32 {
+				// 具体的なコード
+				dx_DxLib_Init2()
+			}
+		が生成される。
+		)
+	- #[as_result_error_type(value)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・#[as_result]を使用された場合にのみ使える
+		・指定されたエラー型を使用する
+		・thiserror::Errorトレイトを必須とする(enum必須)
+	- #[as_result_error_type_top_priority(value)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・指定されたenum値を使用してエラー時に戻り値を返すようにする
+		・エラー条件は、#[error_condition=value]で指定したもの、もしくはデフォルトのエラー条件を使用する。	
+	- #[as_result_error_type_top_priority(default)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトのエラーのバリアントを使用してエラー時に戻り値を返すようにする
+		・エラー条件は、#[error_condition=value]で指定したもの、もしくはデフォルトのエラー条件を使用する。
+	- #[as_result],#[as_result(default)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトの戻り値の型を使用(anyhow::Result)
+	- #[as_result(false)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトの戻り値の型を使用しない
+		・純粋に指定された戻り値でffi,ラップの関数を生成する
+		・このアトリビュート自体が指定されていない場合と同義
+
+	- #[arg_convert(default)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトの引数変換処理を使用
+		- 具体的なポインタ等、デフォルトの変換処理(
+			c_charはstd::os::rawのもので、
+			エンコードは基本的にUTF8基準だが、
+			その他対応は考える必要あり
+		)
+
+			・&str -> *const
+			・String -> *const
+			・&String -> *const 
+			・&mut String -> *mut c_char
+			・Vec<T> -> *const T
+			・&Vec<T> -> *const T
+			・&mut Vec<T> -> *mut T
+			・&[T] -> *const T
+			・&mut [T] -> *mut T
+			・impl AsRef<str> -> *const c_char
+			・&impl AsRef<str> -> *const c_char
+			・&mut AsMut<str> -> *mut c_char
+			・impl ToString -> *const c_char
+			・&impl ToString -> *const c_char
+			・&mut impl ToString -> *mut c_char
+			・[T;N] -> *const T
+			・&[T;N] -> *const T
+			・&mut [T;N] -> *mut T
+			・構造体型 -> #[repr(c)]をされている構造体のみ そのまま渡す
+			・&構造体型 -> #[repr(c)]をされている構造体のみ &構造体型 as *const 構造体型にして渡す
+			・&mut 構造体型 -> #[repr(c)]をされている構造体のみ &mut 構造体型 as *mut 構造体型にして渡す
+			・Option<T> -> T
+			・プリミティブ型 -> 基本的にそのまま
+
+	- #[arg_convert(false)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトの引数変換処理を使用しない
+	- #[arg_convert_*(value)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・指定関数の変換処理を実行
+		・RawPointer等の*mut や*constを返す型で変換処理を行う
+		・一度にマクロトップダウンで、何個も行うことが可能
+			#[arg_convert_str(custom_convert_str)]
+			#[arg_convert_string(custom_convert_string)]
+			#[arg_convert_vec_c_char(custom_convert_vec_c_char)]
+			#[arg_convert_as_ref_str(custom_convert_impl_as_ref_str)]
+		等をもし行った場合、引数にこれらが含まれる場合に該当の関数ポインタを
+		実行して変換し、得られたRawPointerを取り出し内部でffi関数側に渡す
+		・_の続きの*には下記の様なものがあり、それぞれ関数ポインタも異なる
+			- str(arg_convert_str)
+				・fn (&str) -> RawPointer
+			- String(arg_convert_string)
+				・fn (String) -> RawPointer
+			- Vec<c_char>(arg_convert_vec_c_char)
+				・fn (Vec<c_char>) -> RawPointer
+			- impl AsRef<str>(arg_convert_as_ref_str)
+				・fn (impl AsRef<str>) -> RawPointer
+			
+	- #[as_arg_type(value)] : 関数宣言内引数前でのみ使用可能
+		・引数の型を指定型に変換する(暗黙的な変換(as,Into)、Intoが使用できない場合、asが使用される。その場合、負数、少数の値こぼれ等は考慮されない)	
+	- #[as_arg_type(value)] : 関数宣言内引数前でのみ使用可能
+		・引数の型を指定型に変換する(暗黙的な変換(as,Into)、Intoが使用できない場合、asが使用される。その場合、負数、少数の値こぼれ、切り捨て等は考慮されない)	
+	- #[option_default(default)] : 関数宣言内引数前でのみ使用可能
+		・Option型が使用された際、Noneの場合にデフォルトの値が指定される
+	- #[option_default(value)] : 関数宣言内引数前でのみ使用可能
+		・Option型が使用された際、Noneの場合に引数の値が指定される
+	- #[error_condition(value)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・指定された条件をエラー条件として生成する
+		・resultという名前で比較可能 #[error_condition("result == i32::MAX")]等
+	- #[error_condition(default)] : マクロトップダウン、関数宣言上部でのみ使用可能
+		・デフォルトの条件をエラー条件として生成する
+	- #[not_null_assert(false)] : マクロトップダウン、、関数宣言上部でのみ使用可能
+		・引数が自動的に*mut,*const等に変換されたものの場合に実行されるnullチェック用assertを無効にする
+	- #[not_null_assert(true)] : マクロトップダウン、、関数宣言上部でのみ使用可能
+		・引数が自動的に*mut,*const等に変換されたものの場合に実行されるnullチェック用assertを有効にする
+		・デフォルトで採択されるため、このマクロはfalseしない限り採択される
+	- #[func_name_top_prefix(value)] : マクロトップダウン、、関数宣言上部でのみ使用可能
+		・指定の文字列を、指定された関数宣言の名前の最初につける
+			- 具体的に処理されること
+				cffi_gen!の中で、
+					fn DxLib_Init() -> i32
+				が指定されているとき、
+					#[func_name_top_prefix="dx_"]
+				を場合、リンクされる関数は、
+					fn dx_DxLib_Init() -> i32
+				として生成される
+	- #[func_name_down_prefix(value)] : マクロトップダウン、、関数宣言上部でのみ使用可能
+		・指定の文字列を、指定された関数宣言の名前の最後につける
+			- 具体的に処理されること
+				cffi_gen!の中で、
+					fn DxLib_Init() -> i32
+				が指定されているとき、
+					#[func_name_top_prefix="_dx"]
+				を場合、リンクされる関数は、
+					fn DxLib_Init_dx() -> i32
+				として生成される
+
+
+例1
+static mut DEFAULT_RECT: RECT = RECT { left: -1, right: -1, top: -1, bottom: -1, }; fn default_rect_ptr() -> *mut RECT { unsafe { &raw mut DEFAULT_RECT } }
+
+#[library_name("DxLib_x64")]
+cffi_gen! {
+ #[as_result] #[arg_convert(default)] fn DxLib_Init() -> i32,
+ #[as_result] #[arg_convert(default)] fn DxLib_End() -> i32,
+ #[as_result] #[arg_convert(default)] fn ProcessMessage() -> i32,
+ #[as_result] #[arg_convert(default)] fn ScreenFlip() -> i32,
+ #[as_result] #[arg_convert(default)] fn SetDrawScreen(#[option_default("DX_SCREEN_BACK") draw_screen: Option<i32>) -> i32,
+ #[as_result] #[arg_convert(default)] fn ClearDrawScreen(#[option_default("default_rect_ptr()")] clear_rect: Option<*mut RECT>) -> i32,
+}
+
+例2
+static mut DEFAULT_RECT: RECT = RECT { left: -1, right: -1, top: -1, bottom: -1, }; fn default_rect_ptr() -> *mut RECT { unsafe { &raw mut DEFAULT_RECT } }
+
+#[library_name("DxLib_x64")]
+#[as_result] 
+#[arg_convert(default)] 
+cffi_gen! {
+  fn DxLib_Init() -> i32,
+  fn DxLib_End() -> i32,
+  fn ProcessMessage() -> i32,
+  fn ScreenFlip() -> i32,
+  fn SetDrawScreen(#[option_default("DX_SCREEN_BACK") draw_screen: Option<i32>) -> i32,
+  fn ClearDrawScreen(#[option_default("default_rect_ptr()") clear_rect: Option<*mut RECT>) -> i32,
+}
